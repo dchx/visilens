@@ -6,12 +6,12 @@ from astropy.io import fits
 import astropy.units as u
 from astropy.cosmology import Planck15
 
-def sim_obs(outfits, Lens, Source, npixside=200, center=(0,0), res=0.01, gridunit='arcsec', cosmo=Planck15):
+def sim_obs(outprefix, Lens, Source, npixside=200, center=(0,0), res=0.01, gridunit='arcsec', cosmo=Planck15):
 	'''
 	Simulate observed lensed sources.
 	-----
 	Parameters
-	    outfits: output fits file name
+	    outprefix: output fits file prefix; output=outprefix+'_image/source.fits'
 	    Lens: SIELens or ExternalShear or list of Lenses
 	    Source: GaussSource, SersicSource, PointSource or list of Sources
 	        source position: relative to the first Lens.
@@ -44,29 +44,35 @@ def sim_obs(outfits, Lens, Source, npixside=200, center=(0,0), res=0.01, griduni
 
 	# perform lensing
 	xsource, ysource = vl.LensRayTrace(x,y,lenses,Dd,Ds,Dds)
+	imsource = np.zeros(xsource.shape)
 	imlensed = np.zeros(xsource.shape)
 	for source in sources:
+		imsource += vl.SourceProfile(x,y,source,lenses)
 		imlensed += vl.SourceProfile(xsource,ysource,source,lenses)
 	
 	# write to fits file
-	hdu = fits.PrimaryHDU(imlensed)
-	for i,AXIS in enumerate(['1', '2']):
-		hdu.header['CUNIT'+AXIS] = 'deg'
-		hdu.header['CRPIX'+AXIS] = icen # reference pixel
-		hdu.header['CRVAL'+AXIS] = (center[i] * u.Unit(gridunit)).to(u.degree).value # reference pixel coordinate
-		hdu.header['CDELT'+AXIS] = (res * u.Unit(gridunit)).to(u.degree).value # pixel scale
-	#plt.imshow(imlensed)
-	#plt.show()
-	hdu.writeto(outfits,overwrite=True)
-	print "Saved: ", outfits
+	profiles = [imsource, imlensed]
+	outsuffixes = ['_source.fits', '_image.fits']
+	for i in range(len(profiles)):
+		hdu = fits.PrimaryHDU(profiles[i])
+		for iax,AXIS in enumerate(['1', '2']):
+			hdu.header['CUNIT'+AXIS] = 'deg'
+			hdu.header['CRPIX'+AXIS] = icen # reference pixel
+			hdu.header['CRVAL'+AXIS] = (center[iax] * u.Unit(gridunit)).to(u.degree).value # reference pixel coordinate
+			hdu.header['CDELT'+AXIS] = (res * u.Unit(gridunit)).to(u.degree).value # pixel scale
+		plt.imshow(profiles[i])
+		plt.title(os.path.basename(outprefix+outsuffixes[i]))
+		plt.show()
+		hdu.writeto(outprefix+outsuffixes[i], overwrite=True)
+		print "Saved: ", outprefix+outsuffixes[i]
 
 if __name__ == '__main__':
 	lens = vl.SIELens(\
-	    z = 0.8,\
+	    z = 0.5,\
 	    x = 0.,\
 	    y = 0.,\
-	    M = 1e11,\
-	    e = 0.,\
+	    M = 10**(10* 1.1),\
+	    e = 0.5,\
 	    PA = 0.) # M in Msun, PA in degrees east of north.
 	'''
 	source = vl.SersicSource(\
@@ -80,10 +86,10 @@ if __name__ == '__main__':
 	    PA = ) # x/yoff relative to the first lens, flux is total integrated flux in Jy
 	'''
 	source = vl.GaussSource(\
-	    z = 5.6559,\
-	    xoff = 0.,\
-	    yoff = 0.,\
-	    flux = 0.01,\
+	    z = 1.,\
+	    xoff = 0.1,\
+	    yoff = 0.1,\
+	    flux = 0.1,\
 	    width = 0.1) # x/yoff relative to the first lens, flux is total integrated flux in Jy
 	'''
 	source = vl.PointSource(\
@@ -93,6 +99,6 @@ if __name__ == '__main__':
 	    flux = 0.01) # x/yoff relative to the first lens, flux is total integrated flux in Jy
 	'''
 	path = '/home/dcx/dcx/jwst/ripplestest/models/'
-	path = '/astro/homes/dcx/dcxroot/sptalma/visilens/visilens/'
-	out = path + 'simed_image.fits'
+	path = '/astro/homes/dcx/dcxroot/sptalma/visilens/simulations/'
+	out = path + 'simed_comp'
 	sim_obs(out, lens, source)
