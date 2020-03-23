@@ -5,7 +5,7 @@ from astropy.io import fits
 import astropy.units as u
 from astropy.cosmology import Planck15
 import scipy.signal as sig
-from astropy.modeling.models import Moffat2D
+from astropy.modeling.models import Moffat2D,Gaussian2D
 from lensing import LensRayTrace
 from class_utils import *
 from calc_likelihood import SourceProfile
@@ -29,44 +29,57 @@ def write_fits(im, tosave, refpix, refcoo, res, gridunit='arcsec'):
 	hdu.writeto(tosave, overwrite=True)
 	print "Saved: ", tosave
 
-def add_noise(image, sky_level=None, sky_rela=0.2):
+def add_noise(image, sigma=None, sky_level=None, sky_rela=0.2):
 	'''
 	Add poisson noise on image
 
 	Paramaters
 	-------------
 	image: 2-d array image
+	sigma: if None, add poisson noise, else add gaussian noise
 	sky_level: absolute sky level in image units
 	sky_rela: sky level relative to maximum image flux
+
+	Return
+	-------------
+	image with noise added
+	rms map
 	'''
 	if sky_level != None: sky = sky_level
 	else: sky = np.max(image) * sky_rela
 	im_wsky = image + sky
-	poiss_noise = np.random.poisson(lam=abs(im_wsky)) - im_wsky
-	im_noise = poiss_noise.std() * np.ones(image.shape)
-	return image + poiss_noise, im_noise
+	if sigma==None: # add poisson noise
+		noise = np.random.poisson(lam=abs(im_wsky)) - im_wsky
+		im_noise = noise.std() * np.ones(image.shape)
+	else: # add gaussian noise
+		noise = np.random.normal(scale=sigma, size=image.shape)
+		im_noise = sigma * np.ones(image.shape)
+	return image + noise, im_noise
 
-def convolve_psf(image, res, savepsf=False, psf_width=0.1, gridunit='arcsec'):
+def convolve_psf(image, res, savepsf=False, model='moffat', psf_width=0.1, noise_sigma=None, gridunit='arcsec'):
 	'''
 	image: 2d array
 	res: (arcsec/pix) image resolution
+	model: moffat or gaussian
 	psf_width: (arcsec) default 0.1
 	'''
 	psf_len = 5 * psf_width # (arcsec) psf image length
 	grid_right = np.arange(0.,psf_len/2.+res,res)
 	grid = np.hstack([(grid_right-psf_len/2.)[:-1],grid_right])
 	x, y = np.meshgrid(grid, grid)
-	psf = Moffat2D(gamma = psf_width)(x,y)
+	if model == 'moffat': psf = Moffat2D(gamma = psf_width)(x,y)
+	elif 'gauss' in model: psf = Gaussian2D(x_stddev = psf_width, y_stddev = psf_width)(x,y)
+	psf = psf / np.sum(psf) # normalize
 	image_out = sig.fftconvolve(image,psf,mode='same')
 
 	# write psf to fits
-	psf, _ = add_noise(psf) # add noise for output psf
+	psf, _ = add_noise(psf, noise_sigma) # add noise for output psf
 	if savepsf:
 		psf_icen = (len(grid) + 1)/2. # center x/y pixel index (start from 1)
 		write_fits(psf, savepsf, refpix=psf_icen, refcoo=(0,0), res=res, gridunit=gridunit)
 	return image_out
 
-def sim_obs(outprefix, Lens, Source, npixside=200, center=(0,0), res=0.01, gridunit='arcsec', src_center=(0,0), src_npixside=200, src_res=0.01, cosmo=Planck15):
+def sim_obs(outprefix, Lens, Source, npixside=200, center=(0,0), res=0.01, gridunit='arcsec', src_center=(0,0), src_npixside=200, src_res=0.01, psf_model='moffat', psf_width=0.1, noise_sigma=None, cosmo=Planck15):
 	'''
 	Simulate observed lensed sources.
 	-----
@@ -75,7 +88,7 @@ def sim_obs(outprefix, Lens, Source, npixside=200, center=(0,0), res=0.01, gridu
 	    Lens: SIELens or ExternalShear or list of Lenses
 	    Source: GaussSource, SersicSource, PointSource or list of Sources
 	        source position: relative to the first Lens.
-	    npixside: (int) number of pixesl of generated image; default 200
+	    npixside: (int) number of side pixels of generated image; default 200
 	    center: size 2 (list-like) define center of generated image in (arcsec) or
 	            the same units as in Lens and Source (gridunit); default (0,0)
 	    res: [gridunit/pix] pixel resolution; default 0.01
@@ -116,8 +129,8 @@ def sim_obs(outprefix, Lens, Source, npixside=200, center=(0,0), res=0.01, gridu
 
 		# convolve psf, add noise for image (source not)
 		if i==0:
-			im = convolve_psf(im, reses[i], gridunit=gridunit, savepsf=outprefix+outsuffixes[i]+'_psf.fits')
-			im, rms = add_noise(im)
+			im = convolve_psf(im, reses[i], model=psf_model, psf_width=psf_width, noise_sigma=noise_sigma, gridunit=gridunit, savepsf=outprefix+outsuffixes[i]+'_psf.fits')
+			im, rms = add_noise(im, noise_sigma)
 
 		# write to fitsfile
 		tosave = outprefix+outsuffixes[i]+'.fits'
@@ -127,7 +140,7 @@ def sim_obs(outprefix, Lens, Source, npixside=200, center=(0,0), res=0.01, gridu
 			write_fits(rms, tosave_rms, refpix=icen, refcoo=centers[i], res=reses[i], gridunit=gridunit)
 
 		# have a glance
-		plt.imshow(im)
+		plt.imshow(im, extent=gridlim, origin='lower')
 		plt.title(os.path.basename(tosave))
 		plt.show()
 
@@ -164,6 +177,5 @@ if __name__ == '__main__':
 	    flux = 0.01) # x/yoff relative to the first lens, flux is total integrated flux in Jy
 	'''
 	path = '/home/dcx/dcx/jwst/ripplestest/models/'
-	path = '/astro/homes/dcx/dcxroot/sptalma/visilens/simulations/'
 	out = path + 'simed_comp'
 	sim_obs(out, lens, source)
