@@ -4,9 +4,9 @@ from scipy.fftpack import fftshift,fft2
 from scipy.special import gamma, gammaincinv
 from scipy.interpolate import RectBivariateSpline
 import copy
-from lensing import *
-from class_utils import *
-from utils import *
+from .lensing import *
+from .class_utils import *
+from .utils import *
 
 arcsec2rad = np.pi/180/3600
 rad2arcsec = 3600.*180./np.pi
@@ -254,8 +254,8 @@ def SourceProfile(xsource,ysource,source,lens):
       
       elif source.__class__.__name__=='PointSource':
             if source.lensed:# and len(lens)==1:
-                  xs = source.xoff['value'] + lens[0].x['value']
-                  ys = source.yoff['value'] + lens[0].y['value']
+                  #xs = source.xoff['value'] + lens[0].x['value']
+                  #ys = source.yoff['value'] + lens[0].y['value']
                   return ValueError("Lensed point sources not working yet... try a"\
                    "gaussian with small width instead...")
             else:

@@ -2,9 +2,10 @@ __all__ = ['Visdata','SersicSource','GaussSource','PointSource','SIELens','Exter
             'read_visdata','concatvis','bin_visibilities']
 
 import numpy as np
+import os
 import astropy.constants as co
 import warnings
-from utils import cart2pol,pol2cart
+from .utils import cart2pol,pol2cart
 
 c = co.c.value # speed of light, in m/s
 G = co.G.value # gravitational constant in SI units
@@ -126,6 +127,31 @@ class Visdata(object):
             self.sigma = sigma
             self.ant1 = ant1
             self.ant2 = ant2
+      
+      def to_binfile(self,filename,overwrite=False):
+          """
+          Write out the visibility data to a .bin file that can then be read by
+          vl.read_visdata.
+          
+          filename: string
+          File to write out to. Will have '.bin' appended to it if not already given.
+          
+          overwrite: boolean
+          If filename already exists and overwrite=False, will not overwrite existing file.
+          """
+          
+          allarr = np.vstack((self.u,self.v,self.real,self.imag,self.sigma,self.ant1,self.ant2))
+          
+          if not filename[-4:] == '.bin': filename += '.bin'
+          
+          if os.path.isfile(filename) and not overwrite:
+              raise IOError('filename {0:s} exists and overwrite=False; '\
+                  'use visdata.to_binfile(filename,overwrite=True) to overwrite')
+          
+          with open(filename,'wb') as f:
+              allarr.tofile(f)
+              f.write(self.PBfwhm)
+        
 
 class SIELens(object):
       """
@@ -562,7 +588,7 @@ def read_visdata(filename):
       data = np.fromfile(filename)
       PBfwhm = data[-1]
       data = data[:-1]
-      data = data.reshape(7,data.size/7) # bin files lose array shape, so reshape to match
+      data = data.reshape(7,data.size//7) # bin files lose array shape, so reshape to match
 
       data = Visdata(*data,PBfwhm=PBfwhm,filename=filename)
       
@@ -640,13 +666,13 @@ def bin_visibilities(visdata,maxnewsize=None):
       # Bins should be smaller than the effective field size
       maxbinsize = (visdata.PBfwhm * arcsec2rad)**-1
 
-      print minbinsize,maxbinsize
+      print(minbinsize,maxbinsize)
 
       # We're going to find a binning solution iteratively; this gets us set up
       Nbins, binsizeunmet, Nvis, it, maxiter = [3000,3000], True, visdata.u.size, 0, 250
       
       while (binsizeunmet or Nvis >= maxnewsize):
-            print Nbins
+            print(Nbins)
             # Figure out how to bin up the data
             counts,uedges,vedges,bins = stats.binned_statistic_2d(
                   visdata.u,visdata.v,values=visdata.real,statistic='count',
@@ -672,7 +698,7 @@ def bin_visibilities(visdata,maxnewsize=None):
             it += 1
             if it > maxiter: raise ValueError("It's impossible to split your data into that few bins!  "
                                     "Try setting maxnewsize to a larger value!")
-            print Nvis,du,dv
+            print(Nvis,du,dv)
 
 
       # Get us some placeholder arrays for the binned data
