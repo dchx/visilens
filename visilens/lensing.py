@@ -22,6 +22,8 @@ def LensRayTrace(xim,yim,lens,Dd,Ds,Dds):
       Wrapper to pass off lensing calculations to any number of functions
       defined below, accumulating lensing offsets from multiple lenses
       and shear as we go.
+      -------------
+      input image plane grids, output source plane grids
       """
       # Ensure lens is a list, for convenience
       lens = list(np.array([lens]).flatten())

@@ -2,7 +2,6 @@ import numpy as np
 import scipy.sparse
 import os
 import sys
-import emcee
 import copy
 from astropy.cosmology import Planck15
 from .class_utils import *
@@ -88,6 +87,7 @@ def LensModelMCMC(data,lens,source,
             to return this once mcmcresult is packaged up nicely.
       """
 
+      import emcee
       if pool: nthreads = 1
       elif mpirun:
             nthreads = 1
